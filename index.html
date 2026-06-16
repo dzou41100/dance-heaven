@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>扒舞天堂</title>
+<style>
+:root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --text: #333333;
+    --text2: #666666;
+    --text3: #999999;
+    --blue: #2563eb;
+    --red: #ef4444;
+    --border: #e2e8f0;
+    --player-bg: #000000;
+    --overlay-bg: rgba(20, 20, 20, 0.85);
+    --overlay-text: #ffffff;
+    --radius: 12px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-size: 14px;
+}
+
+/* ===== 顶栏 ===== */
+.header {
+    height: 50px;
+    background: var(--card);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    flex-shrink: 0;
+    z-index: 50;
+}
+.header-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.header-toggle {
+    display: flex;
+    background: #f1f5f9;
+    border-radius: 20px;
+    padding: 3px;
+    border: 1px solid var(--border);
+}
+.mode-btn {
+    padding: 6px 14px;
+    border-radius: 18px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--text2);
+    border: none;
+    background: none;
+    transition: all .2s;
+}
+.mode-btn.on {
+    background: var(--card);
+    color: var(--text);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+/* ===== 主区域 ===== */
+.main-body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    gap: 12px;
+}
+
+/* ===== 播放器包裹层 ===== */
+#fs-wrapper {
+    position: relative;
+    width: 100%;
+    background: var(--player-bg);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 240px;
+    transition: all 0.2s ease;
+}
+
+/* 兼容iOS等伪全屏样式 (竖屏看竖屏/横屏看横屏) */
+#fs-wrapper.pseudo-fullscreen {
+    position: fixed !important;
+    top: 0 !important; left: 0 !important;
+    width: 100vw !important; height: 100vh !important;
+    z-index: 99999 !important;
+    border-radius: 0 !important;
+}
+
+/* 强制旋转全屏样式 (竖屏看横屏专用) */
+#fs-wrapper.rotate-fullscreen {
+    position: fixed !important;
+    top: 0 !important; 
+    left: 100vw !important; /* 旋转起点调整 */
+    width: 100vh !important; 
+    height: 100vw !important;
+    z-index: 99999 !important;
+    transform: rotate(90deg) !important;
+    transform-origin: 0 0 !important;
+    border-radius: 0 !important;
+}
+
+#fs-wrapper:-webkit-full-screen { border-radius: 0; width: 100vw; height: 100vh; }
+#fs-wrapper:fullscreen { border-radius: 0; width: 100vw; height: 100vh; }
+
+.video-layer {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    flex: 1;
+    position: relative;
+    transform-origin: center center;
+}
+
+.vid-wrap {
+    flex: 1;
+    position: relative;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid #333;
+}
+.vid-wrap:last-child { border-right: none; }
+
+video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+/* 导入遮罩 */
+.upload-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(to bottom, rgba(30,30,30,0.5), rgba(0,0,0,0.8));
+    color: #fff;
+    cursor: pointer;
+    z-index: 10;
+}
+.upload-overlay span {
+    background: rgba(255,255,255,0.2);
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+    backdrop-filter: blur(4px);
+}
+
+/* 更换视频按钮 */
+.change-vid-btn {
+    position: absolute;
+    top: 12px; right: 12px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 4px 10px;
+    border-radius: 14px;
+    font-size: 12px;
+    cursor: pointer;
+    z-index: 25;
+    display: none; /* 默认隐藏 */
+    backdrop-filter: blur(4px);
+}
+
+/* ===== 倒计时 ===== */
+#countdown-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    font-size: 80px;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 4px 12px rgba(0,0,0,.5);
+}
+
+/* ===== 悬浮控制层 ===== */
+.controls-layer {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    display: flex;
+    flex-direction: column;
+    z-index: 30;
+    padding-bottom: 8px;
+    background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.controls-layer.hide {
+    opacity: 0;
+    transform: translateY(100%);
+    pointer-events: none;
+}
+
+/* ===== 弹出面板 ===== */
+.floating-panel {
+    background: var(--overlay-bg);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    margin: 0 10px 10px 10px;
+    padding: 12px;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    color: var(--overlay-text);
+}
+.floating-panel.active { display: flex; }
+.panel-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.panel-lbl { font-size: 12px; color: #aaa; width: 45px; flex-shrink: 0; }
+
+.cap-btn {
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: .2s;
+}
+.cap-btn.active { background: var(--blue); color: #fff; font-weight: bold; }
+.cap-btn:active { background: rgba(255,255,255,0.3); }
+
+select.dark-sel, input.dark-input {
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    outline: none;
+}
+
+/* ===== 进度条 ===== */
+.progress-container {
+    height: 24px;
+    margin: 0 16px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    position: relative;
+}
+.progress-track {
+    width: 100%; height: 4px; background: rgba(255,255,255,0.3);
+    border-radius: 2px; position: relative;
+}
+.progress-fill {
+    height: 100%; background: #fff; border-radius: 2px; width: 0%;
+    position: absolute; left: 0; top: 0;
+}
+.progress-thumb {
+    width: 14px; height: 14px; background: #fff; border-radius: 50%;
+    position: absolute; top: 50%; left: 0%; transform: translate(-50%, -50%);
+    box-shadow: 0 0 6px rgba(0,0,0,0.5); pointer-events: none;
+}
+.ab-dot {
+    position: absolute; top: -2px; width: 4px; height: 8px;
+    background: #f5c842; border-radius: 2px; display: none;
+}
+.pin-dot {
+    position: absolute; top: -4px; width: 8px; height: 8px;
+    background: var(--red); border-radius: 50%; transform: translateX(-50%);
+}
+
+/* ===== 底部悬浮控制栏 ===== */
+.ctrl-bar {
+    background: var(--overlay-bg);
+    backdrop-filter: blur(8px);
+    border-radius: 24px;
+    margin: 0 10px;
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.play-btn {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: #fff; color: #000; border: none; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0;
+}
+.time-lbl {
+    font-size: 12px; color: #fff; font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.tools-scroll {
+    display: flex; align-items: center; gap: 6px;
+    overflow-x: auto; scrollbar-width: none; flex: 1;
+}
+.tools-scroll::-webkit-scrollbar { display: none; }
+
+.tool-btn {
+    background: rgba(255,255,255,0.1); border: none; color: #fff;
+    width: 34px; height: 34px; border-radius: 50%; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; cursor: pointer; transition: .2s;
+}
+.tool-btn.wide { width: auto; padding: 0 10px; border-radius: 16px; font-size: 12px; font-weight: bold;}
+.tool-btn.active { background: var(--blue); }
+
+/* ===== 笔记区与弹窗 ===== */
+.notes-section {
+    background: var(--card); border-radius: var(--radius);
+    padding: 16px; border: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 12px;
+}
+.notes-header {
+    font-size: 14px; font-weight: 800; color: var(--text);
+    display: flex; align-items: center; justify-content: space-between;
+}
+.notes-subtitle { font-size: 12px; color: var(--text3); font-weight: normal; }
+.pin-empty { text-align: center; font-size: 13px; color: var(--text3); padding: 10px 0; }
+.pin-card {
+    display: flex; align-items: flex-start; gap: 10px; padding: 10px;
+    background: #f8fafc; border-radius: 8px; cursor: pointer;
+}
+.pin-time { color: var(--red); font-weight: bold; font-size: 13px; }
+.pin-note-text { flex: 1; font-size: 13px; color: var(--text); line-height: 1.4; }
+.pin-del { border: none; background: none; color: var(--text3); font-size: 16px; padding: 0 5px; }
+
+.pin-modal-mask {
+    position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    z-index: 200; display: flex; align-items: flex-end;
+    visibility: hidden; opacity: 0; transition: .2s;
+}
+.pin-modal-mask.open { visibility: visible; opacity: 1; }
+.pin-modal {
+    background: var(--bg); width: 100%; padding: 20px;
+    border-radius: 20px 20px 0 0; display: flex; flex-direction: column; gap: 12px;
+}
+.pin-input {
+    width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border);
+    font-size: 14px; outline: none;
+}
+.pin-btns { display: flex; gap: 10px; }
+.pin-btns button {
+    flex: 1; padding: 12px; border-radius: 10px; font-weight: bold; border: none; cursor: pointer;
+}
+.toast {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.8); color: #fff; padding: 10px 20px; border-radius: 8px;
+    font-size: 14px; z-index: 9999; opacity: 0; pointer-events: none; transition: .3s;
+}
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-title">
+        <span style="font-size: 20px;">💿</span> 扒舞天堂
+    </div>
+    <div class="header-toggle">
+        <button class="mode-btn on" id="mode-single" onclick="setMode('single')">单视频</button>
+        <button class="mode-btn" id="mode-split" onclick="setMode('split')">对比分屏</button>
+    </div>
+</div>
+
+<div class="main-body">
+    <div id="fs-wrapper">
+        <div class="video-layer" id="video-layer">
+            <div class="vid-wrap" id="wrap-main">
+                <button class="change-vid-btn" id="btn-change-main" onclick="triggerMain(event)">换视频</button>
+                <video id="vid-main" playsinline loop></video>
+                <div class="upload-overlay" id="overlay-main" onclick="triggerMain(event)">
+                    <span>导入原版视频</span>
+                </div>
+            </div>
+            <div class="vid-wrap" id="wrap-cmp" style="display:none;">
+                <button class="change-vid-btn" id="btn-change-cmp" onclick="triggerCompare(event)">换视频</button>
+                <video id="vid-compare" playsinline loop muted></video>
+                <div class="upload-overlay" id="overlay-cmp" onclick="triggerCompare(event)">
+                    <span>导入我的录像</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="countdown-overlay">3</div>
+
+        <div class="controls-layer" id="controls-layer">
+            
+            <div class="floating-panel" id="panel-speed">
+                <div class="panel-row">
+                    <span class="panel-lbl">快捷</span>
+                    <button class="cap-btn" onclick="setSpeed(0.5)">0.5x</button>
+                    <button class="cap-btn" onclick="setSpeed(0.75)">0.7x</button>
+                    <button class="cap-btn active" id="cap-spd-1" onclick="setSpeed(1)">1.0x</button>
+                    <button class="cap-btn" onclick="setSpeed(1.25)">1.2x</button>
+                </div>
+                <div class="panel-row">
+                    <span class="panel-lbl">自定义</span>
+                    <input type="number" class="dark-input" id="custom-spd" value="1.0" min="0" max="3" step="0.1" style="width: 60px;" onchange="setSpeed(this.value)">
+                    <span style="font-size: 12px; color: #aaa;">(0 - 3倍速)</span>
+                </div>
+            </div>
+
+            <div class="floating-panel" id="panel-ab">
+                <div class="panel-row">
+                    <button class="cap-btn" id="btn-ab-a" onclick="markAB('A')">起点 A</button>
+                    <button class="cap-btn" id="btn-ab-b" onclick="markAB('B')">终点 B</button>
+                    <button class="cap-btn" onclick="resetAB()" style="background:rgba(255,255,255,0.1)">重置</button>
+                </div>
+                <div class="panel-row">
+                    <span class="panel-lbl">次数</span>
+                    <select class="dark-sel" id="ab-loops" onchange="updateABConfig()">
+                        <option value="0">无限循环</option>
+                        <option value="1">循环 1 次</option>
+                        <option value="3">循环 3 次</option>
+                        <option value="5">循环 5 次</option>
+                    </select>
+                    <span class="panel-lbl" style="margin-left: 8px; width:auto;">间隔</span>
+                    <select class="dark-sel" id="ab-delay" onchange="updateABConfig()">
+                        <option value="0">无缝(0s)</option>
+                        <option value="1">1 秒</option>
+                        <option value="3">3 秒</option>
+                        <option value="5">5 秒</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="floating-panel" id="panel-sync">
+                <div style="font-size:12px; color:#aaa;">点击微调帧数确定各自开始时间，播放时将自动锁定对齐。</div>
+                <div class="panel-row">
+                    <span class="panel-lbl">原版</span>
+                    <button class="cap-btn" onclick="adjustOffset('left', -1)">◀ 退一帧</button>
+                    <button class="cap-btn" onclick="adjustOffset('left', 1)">进一帧 ▶</button>
+                </div>
+                <div class="panel-row">
+                    <span class="panel-lbl">我的</span>
+                    <button class="cap-btn" onclick="adjustOffset('right', -1)">◀ 退一帧</button>
+                    <button class="cap-btn" onclick="adjustOffset('right', 1)">进一帧 ▶</button>
+                </div>
+            </div>
+
+            <div class="progress-container" id="prog-wrap">
+                <div class="progress-track" id="prog-track">
+                    <div class="progress-fill" id="prog-fill"></div>
+                    <div class="progress-thumb" id="prog-thumb"></div>
+                    <div class="ab-dot" id="dot-a"></div>
+                    <div class="ab-dot" id="dot-b"></div>
+                </div>
+            </div>
+
+            <div class="ctrl-bar">
+                <button class="play-btn" id="btn-play" onclick="togglePlay()">▶</button>
+                <span class="time-lbl" id="time-lbl">00:00 / 00:00</span>
+                
+                <div class="tools-scroll">
+                    <button class="tool-btn" id="tb-speed" onclick="togglePanel('speed')">⚡</button>
+                    <button class="tool-btn" id="tb-mirror" onclick="toggleMirror()">🪞</button>
+                    <button class="tool-btn" id="tb-ab" onclick="togglePanel('ab')">🔁</button>
+                    <button class="tool-btn" id="tb-sync" onclick="togglePanel('sync')" style="display:none;">✂️</button>
+                    <button class="tool-btn wide" onclick="stepFrame(-1)">◀帧</button>
+                    <button class="tool-btn wide" onclick="stepFrame(1)">帧▶</button>
+                    <button class="tool-btn" onclick="openPinModal()">📍</button>
+                    <button class="tool-btn" onclick="toggleFullscreen()">⛶</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="notes-section">
+        <div class="notes-header">
+            <span>📍 扒舞笔记</span>
+            <span class="notes-subtitle">暂无笔记，点击上方 📍 记录当前动作</span>
+        </div>
+        <div id="pins-list">
+            <div class="pin-empty">暂无笔记记录</div>
+        </div>
+    </div>
+
+</div>
+
+<input type="file" id="file-main" accept="video/*" style="display:none" onchange="handleFile(event, 'main')">
+<input type="file" id="file-cmp" accept="video/*" style="display:none" onchange="handleFile(event, 'cmp')">
+
+<div class="pin-modal-mask" id="pin-modal-mask">
+    <div class="pin-modal">
+        <div style="font-weight:bold; color:var(--text); font-size:15px;" id="pin-time-title">在 00:00 记录</div>
+        <input type="text" class="pin-input" id="pin-input" placeholder="例如：手腕方向错误...">
+        <div class="pin-btns">
+            <button style="background:var(--border); color:var(--text2);" onclick="closePinModal()">取消</button>
+            <button style="background:var(--blue); color:#fff;" onclick="savePin()">记下来</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let currentMode = 'single';
+let isPlaying = false;
+let isMirror = false;
+let syncOffset = 0; 
+let pins = [];
+let pendingTime = 0;
+const FPS = 30;
+
+let abCtx = { A: null, B: null, maxLoops: 0, loopsDone: 0, delay: 0, inDelay: false };
+
+const vidMain = document.getElementById('vid-main');
+const vidCmp = document.getElementById('vid-compare');
+const playBtn = document.getElementById('btn-play');
+const controlsLayer = document.getElementById('controls-layer');
+const fsWrapper = document.getElementById('fs-wrapper');
+
+let controlsTimeout = null;
+
+window.onload = () => {
+    const track = document.getElementById('prog-wrap');
+    let isDragging = false;
+    track.addEventListener('touchstart', e => { isDragging=true; resetControlsTimeout(); seekByEvent(e); }, {passive:true});
+    track.addEventListener('touchmove', e => { if(isDragging){e.preventDefault(); resetControlsTimeout(); seekByEvent(e);} }, {passive:false});
+    track.addEventListener('touchend', () => isDragging=false);
+    track.addEventListener('mousedown', e => { isDragging=true; resetControlsTimeout(); seekByEvent(e); });
+    document.addEventListener('mousemove', e => { if(isDragging) { resetControlsTimeout(); seekByEvent(e); } });
+    document.addEventListener('mouseup', () => isDragging=false);
+
+    vidMain.addEventListener('timeupdate', onTimeUpdate);
+    vidMain.addEventListener('ended', () => { isPlaying=false; updatePlayBtn(); resetControlsTimeout(); });
+
+    document.getElementById('video-layer').addEventListener('click', handleLayerClick);
+    fsWrapper.addEventListener('mousemove', resetControlsTimeout);
+    fsWrapper.addEventListener('touchstart', resetControlsTimeout, {passive: true});
+
+    document.addEventListener('fullscreenchange', onNativeFsChange);
+    document.addEventListener('webkitfullscreenchange', onNativeFsChange);
+
+    initPinchZoom();
+    resetControlsTimeout();
+};
+
+function resetControlsTimeout() {
+    controlsLayer.classList.remove('hide');
+    clearTimeout(controlsTimeout);
+    if (isPlaying) {
+        controlsTimeout = setTimeout(() => {
+            const anyPanelActive = document.querySelector('.floating-panel.active');
+            if (!anyPanelActive) controlsLayer.classList.add('hide');
+        }, 2500);
+    }
+}
+
+let lastTap = 0;
+function handleLayerClick(e) {
+    if (e.target.closest('.upload-overlay') || e.target.closest('.change-vid-btn')) return;
+
+    const currentTime = new Date().getTime();
+    const tapLength = currentTime - lastTap;
+    
+    if (tapLength < 300 && tapLength > 0) {
+        toggleFullscreen(); e.preventDefault();
+    } else {
+        if (controlsLayer.classList.contains('hide')) resetControlsTimeout();
+        else togglePlay();
+    }
+    lastTap = currentTime;
+}
+
+function initPinchZoom() {
+    const layer = document.getElementById('video-layer');
+    let currentScale = 1;
+    let initialDist = 0;
+
+    layer.addEventListener('touchstart', e => {
+        if (e.touches.length === 2) {
+            initialDist = Math.hypot(
+                e.touches[0].pageX - e.touches[1].pageX,
+                e.touches[0].pageY - e.touches[1].pageY
+            );
+        }
+    }, {passive: false});
+
+    layer.addEventListener('touchmove', e => {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            const currentDist = Math.hypot(
+                e.touches[0].pageX - e.touches[1].pageX,
+                e.touches[0].pageY - e.touches[1].pageY
+            );
+            const scale = currentScale * (currentDist / initialDist);
+            layer.style.transform = `scale(${Math.max(1, Math.min(scale, 5))})`;
+        }
+    }, {passive: false});
+
+    layer.addEventListener('touchend', e => {
+        if (e.touches.length < 2) {
+            const match = layer.style.transform.match(/scale\(([^)]+)\)/);
+            currentScale = match ? parseFloat(match[1]) : 1;
+        }
+    });
+}
+
+function setMode(mode) {
+    currentMode = mode;
+    document.getElementById('mode-single').classList.toggle('on', mode === 'single');
+    document.getElementById('mode-split').classList.toggle('on', mode === 'split');
+    document.getElementById('wrap-cmp').style.display = mode === 'split' ? 'flex' : 'none';
+    document.getElementById('tb-sync').style.display = mode === 'split' ? 'flex' : 'none';
+    if(mode === 'split') syncCmpTime();
+    resetControlsTimeout();
+}
+
+function triggerMain(e) { if(e) e.stopPropagation(); document.getElementById('file-main').click(); }
+function triggerCompare(e) { if(e) e.stopPropagation(); document.getElementById('file-cmp').click(); }
+
+function handleFile(e, target) {
+    const file = e.target.files[0]; if(!file) return;
+    const url = URL.createObjectURL(file);
+    if(target === 'main') {
+        vidMain.src = url;
+        document.getElementById('overlay-main').style.display = 'none';
+        document.getElementById('btn-change-main').style.display = 'block'; // 显示更换按钮
+    } else {
+        vidCmp.src = url;
+        document.getElementById('overlay-cmp').style.display = 'none';
+        document.getElementById('btn-change-cmp').style.display = 'block'; // 显示更换按钮
+    }
+    e.target.value = '';
+    resetControlsTimeout();
+}
+
+function togglePlay() {
+    if(!vidMain.src) return showToast('请先导入视频');
+    if(vidMain.paused) {
+        vidMain.play();
+        if(currentMode === 'split' && vidCmp.src) { syncCmpTime(); vidCmp.play(); }
+        isPlaying = true;
+    } else {
+        vidMain.pause();
+        if(currentMode === 'split') vidCmp.pause();
+        isPlaying = false;
+    }
+    updatePlayBtn(); resetControlsTimeout();
+}
+function updatePlayBtn() { playBtn.textContent = isPlaying ? '⏸' : '▶'; }
+
+function togglePanel(id) {
+    const panel = document.getElementById(`panel-${id}`);
+    const btn = document.getElementById(`tb-${id}`);
+    const isActive = panel.classList.contains('active');
+    
+    document.querySelectorAll('.floating-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+    
+    if(!isActive) { panel.classList.add('active'); btn.classList.add('active'); }
+    resetControlsTimeout();
+}
+
+function setSpeed(v) {
+    let rate = parseFloat(v); if(isNaN(rate) || rate < 0 || rate > 3) rate = 1.0;
+    vidMain.playbackRate = rate; vidCmp.playbackRate = rate;
+    document.querySelectorAll('#panel-speed .cap-btn').forEach(b => b.classList.remove('active'));
+    if(rate === 1.0) document.getElementById('cap-spd-1').classList.add('active');
+    document.getElementById('custom-spd').value = rate;
+    showToast(`倍速: ${rate}x`); resetControlsTimeout();
+}
+
+function toggleMirror() {
+    isMirror = !isMirror;
+    document.getElementById('tb-mirror').classList.toggle('active', isMirror);
+    const trans = isMirror ? 'scaleX(-1)' : 'none';
+    vidMain.style.transform = trans; vidCmp.style.transform = trans;
+    showToast(isMirror ? '镜像已开启' : '镜像已关闭'); resetControlsTimeout();
+}
+
+function stepFrame(dir) {
+    if(!vidMain.src) return;
+    vidMain.pause(); isPlaying=false; updatePlayBtn();
+    if(currentMode === 'split') vidCmp.pause();
+    vidMain.currentTime = Math.max(0, vidMain.currentTime + dir/FPS);
+    syncCmpTime(); resetControlsTimeout();
+}
+
+function adjustOffset(side, dir) {
+    if(!vidMain.src || (currentMode === 'split' && !vidCmp.src)) return showToast('视频未加载完整');
+    vidMain.pause(); vidCmp.pause(); isPlaying=false; updatePlayBtn();
+    if(side === 'left') vidMain.currentTime = Math.max(0, vidMain.currentTime + dir/FPS);
+    else vidCmp.currentTime = Math.max(0, vidCmp.currentTime + dir/FPS);
+    syncOffset = vidCmp.currentTime - vidMain.currentTime;
+    updateTimeStr(); resetControlsTimeout();
+}
+
+function syncCmpTime() {
+    if(currentMode === 'split' && vidCmp.src) vidCmp.currentTime = vidMain.currentTime + syncOffset;
+}
+
+// 核心修改点：加入强制旋转检测机制
+function toggleFullscreen() {
+    const isPseudo = fsWrapper.classList.contains('pseudo-fullscreen');
+    const isRotate = fsWrapper.classList.contains('rotate-fullscreen');
+    const isNative = document.fullscreenElement || document.webkitFullscreenElement;
+
+    if (!isNative && !isPseudo && !isRotate) {
+        // 进入全屏前的检测
+        const isHorizontalVideo = vidMain.videoWidth > vidMain.videoHeight;
+        const isPortraitScreen = window.innerHeight > window.innerWidth;
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+        // 若为移动端且在竖屏下播放横向视频，直接采用 CSS 强制旋转全屏
+        if (isMobile && isHorizontalVideo && isPortraitScreen) {
+            fsWrapper.classList.add('rotate-fullscreen');
+        } else {
+            // 常规全屏逻辑
+            if (fsWrapper.requestFullscreen) {
+                fsWrapper.requestFullscreen().catch(() => { fsWrapper.classList.add('pseudo-fullscreen'); });
+            } else if (fsWrapper.webkitRequestFullscreen) {
+                fsWrapper.webkitRequestFullscreen();
+            } else {
+                fsWrapper.classList.add('pseudo-fullscreen');
+            }
+            
+            // 尝试触发系统层面的横屏锁定
+            if (screen.orientation && screen.orientation.lock && isHorizontalVideo) {
+                screen.orientation.lock('landscape').catch(()=>{});
+            }
+        }
+    } else {
+        // 退出全屏
+        if (document.exitFullscreen && isNative) {
+            document.exitFullscreen().catch(()=>{});
+        } else if (document.webkitExitFullscreen && isNative) {
+            document.webkitExitFullscreen();
+        }
+        fsWrapper.classList.remove('pseudo-fullscreen');
+        fsWrapper.classList.remove('rotate-fullscreen');
+        
+        if (screen.orientation && screen.orientation.unlock) {
+            screen.orientation.unlock();
+        }
+    }
+    resetControlsTimeout();
+}
+
+function onNativeFsChange() {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        fsWrapper.classList.remove('pseudo-fullscreen');
+    }
+}
+
+function onTimeUpdate() {
+    if(!vidMain.duration || abCtx.inDelay) return;
+    const pct = vidMain.currentTime / vidMain.duration;
+    document.getElementById('prog-fill').style.width = `${pct * 100}%`;
+    document.getElementById('prog-thumb').style.left = `${pct * 100}%`;
+    updateTimeStr();
+
+    if(abCtx.A !== null && abCtx.B !== null) {
+        if(vidMain.currentTime >= abCtx.B) {
+            if(abCtx.maxLoops > 0) {
+                abCtx.loopsDone++;
+                if(abCtx.loopsDone >= abCtx.maxLoops) {
+                    vidMain.pause(); isPlaying=false; updatePlayBtn();
+                    abCtx.loopsDone = 0; resetControlsTimeout(); return;
+                }
+            }
+            triggerABLoop();
+        }
+    }
+}
+
+function updateTimeStr() {
+    if(!vidMain.duration) return;
+    document.getElementById('time-lbl').textContent = `${fmt(vidMain.currentTime)} / ${fmt(vidMain.duration)}`;
+}
+
+function seekByEvent(e) {
+    if(!vidMain.duration) return;
+    const rect = document.getElementById('prog-track').getBoundingClientRect();
+    let clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    let pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    vidMain.currentTime = pct * vidMain.duration;
+    syncCmpTime(); 
+}
+
+function fmt(s) {
+    const m = Math.floor(s/60).toString().padStart(2,'0');
+    const sec = Math.floor(s%60).toString().padStart(2,'0');
+    return `${m}:${sec}`;
+}
+
+function updateABConfig() {
+    abCtx.maxLoops = parseInt(document.getElementById('ab-loops').value);
+    abCtx.delay = parseInt(document.getElementById('ab-delay').value);
+    abCtx.loopsDone = 0; resetControlsTimeout();
+}
+
+function markAB(type) {
+    if(!vidMain.src) return showToast('请先导入视频');
+    if(type === 'A') {
+        abCtx.A = vidMain.currentTime;
+        document.getElementById('btn-ab-a').classList.add('active');
+        document.getElementById('dot-a').style.left = `${(abCtx.A / vidMain.duration) * 100}%`;
+        document.getElementById('dot-a').style.display = 'block';
+    } else {
+        if(abCtx.A === null) return showToast('请先设定起点A');
+        if(vidMain.currentTime <= abCtx.A) return showToast('终点须大于起点');
+        abCtx.B = vidMain.currentTime;
+        document.getElementById('btn-ab-b').classList.add('active');
+        document.getElementById('dot-b').style.left = `${(abCtx.B / vidMain.duration) * 100}%`;
+        document.getElementById('dot-b').style.display = 'block';
+    }
+    abCtx.loopsDone = 0; resetControlsTimeout();
+}
+
+function resetAB() {
+    abCtx.A = null; abCtx.B = null; abCtx.loopsDone = 0;
+    document.getElementById('btn-ab-a').classList.remove('active');
+    document.getElementById('btn-ab-b').classList.remove('active');
+    document.getElementById('dot-a').style.display = 'none';
+    document.getElementById('dot-b').style.display = 'none';
+    resetControlsTimeout();
+}
+
+function triggerABLoop() {
+    vidMain.pause(); if(currentMode === 'split') vidCmp.pause();
+    
+    if(abCtx.delay > 0) {
+        abCtx.inDelay = true;
+        const ov = document.getElementById('countdown-overlay');
+        ov.style.display = 'flex';
+        let c = abCtx.delay; ov.innerText = c;
+        const timer = setInterval(() => {
+            c--;
+            if(c > 0) { ov.innerText = c; } 
+            else { clearInterval(timer); ov.style.display = 'none'; abCtx.inDelay = false; executeLoopJump(); }
+        }, 1000);
+    } else { executeLoopJump(); }
+}
+function executeLoopJump() {
+    vidMain.currentTime = abCtx.A; syncCmpTime(); vidMain.play();
+    if(currentMode === 'split' && vidCmp.src) vidCmp.play();
+    isPlaying = true; updatePlayBtn(); resetControlsTimeout();
+}
+
+function openPinModal() {
+    if(!vidMain.src) return showToast('请先导入视频');
+    vidMain.pause(); isPlaying=false; updatePlayBtn();
+    pendingTime = vidMain.currentTime;
+    document.getElementById('pin-time-title').textContent = `在 ${fmt(pendingTime)} 记录`;
+    document.getElementById('pin-input').value = '';
+    document.getElementById('pin-modal-mask').classList.add('open');
+    setTimeout(() => document.getElementById('pin-input').focus(), 100);
+}
+function closePinModal() { document.getElementById('pin-modal-mask').classList.remove('open'); resetControlsTimeout(); }
+
+function savePin() {
+    const text = document.getElementById('pin-input').value.trim();
+    if(!text) return showToast('笔记不能为空');
+    pins.push({ time: pendingTime, text });
+    pins.sort((a,b) => a.time - b.time);
+    renderPins(); closePinModal(); showToast('记录成功 📍');
+}
+
+function renderPins() {
+    const list = document.getElementById('pins-list');
+    const track = document.getElementById('prog-track');
+    track.querySelectorAll('.pin-dot').forEach(n => n.remove());
+    
+    if(pins.length === 0) { list.innerHTML = '<div class="pin-empty">暂无笔记记录</div>'; return; }
+    
+    list.innerHTML = '';
+    pins.forEach((p, idx) => {
+        const div = document.createElement('div'); div.className = 'pin-card';
+        div.innerHTML = `<span class="pin-time">${fmt(p.time)}</span><span class="pin-note-text">${p.text}</span><button class="pin-del" onclick="delPin(event, ${idx})">×</button>`;
+        div.onclick = () => { vidMain.currentTime = p.time; syncCmpTime(); resetControlsTimeout(); };
+        list.appendChild(div);
+        
+        if(vidMain.duration) {
+            const dot = document.createElement('div'); dot.className = 'pin-dot';
+            dot.style.left = `${(p.time / vidMain.duration) * 100}%`;
+            track.appendChild(dot);
+        }
+    });
+}
+function delPin(e, idx) { e.stopPropagation(); pins.splice(idx, 1); renderPins(); }
+
+vidMain.addEventListener('loadedmetadata', renderPins);
+
+document.getElementById('pin-modal-mask').addEventListener('click', e => {
+    if(e.target.id === 'pin-modal-mask') closePinModal();
+});
+
+let toastTimer;
+function showToast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg; el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2000);
+}
+</script>
+</body>
+</html>
